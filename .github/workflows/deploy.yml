@@ -1,0 +1,58 @@
+name: Build, Push Docker & Deploy with Terraform
+
+on:
+  push:
+    branches: [ main ]  # Trigger on push to main
+
+env:
+  IMAGE_TAG: latest
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📦 Checkout Code
+      uses: actions/checkout@v4
+
+    - name: 🔐 Log in to Docker Hub
+      run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    - name: 🐳 Build Docker Image
+      run: |
+        docker build -t ${{ secrets.DOCKER_REPO }}:${{ env.IMAGE_TAG }} \
+          -f docker/Dockerfile ./Strapi-Aryan \
+          --build-arg HOST=${{ secrets.HOST }} \
+          --build-arg PORT=${{ secrets.PORT }} \
+          --build-arg APP_KEYS=${{ secrets.APP_KEYS }} \
+          --build-arg API_TOKEN_SALT=${{ secrets.API_TOKEN_SALT }} \
+          --build-arg ADMIN_JWT_SECRET=${{ secrets.ADMIN_JWT_SECRET }} \
+          --build-arg TRANSFER_TOKEN_SALT=${{ secrets.TRANSFER_TOKEN_SALT }} \
+          --build-arg JWT_SECRET=${{ secrets.JWT_SECRET }} \
+          --build-arg ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+
+    - name: 🚀 Push Docker Image to Docker Hub
+      run: |
+        docker push ${{ secrets.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
+
+    - name: ☁️ Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+        
+    - name: ⬇️ Install Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: 🌍 Terraform Init
+      working-directory: terraform
+      run: terraform init
+
+    - name: 🔍 Terraform Plan
+      working-directory: terraform
+      run: terraform plan
+
+    - name: ⚙️ Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve
