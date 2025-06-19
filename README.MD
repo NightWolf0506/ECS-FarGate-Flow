@@ -1,12 +1,12 @@
 # 🚀 Strapi CMS Deployment on AWS ECS Fargate using Terraform & GitHub Actions
 
-This project automates the deployment of a Strapi backend to **AWS ECS Fargate** using:
+This project automates deployment of a **Strapi CMS** to **AWS ECS Fargate**, including monitoring and cleanup, using:
 
-- 🐳 Docker (containerized build)
-- ☁️ AWS ECS Fargate (serverless container service)
-- 📦 Docker Hub (image hosting)
-- 🔧 Terraform (infrastructure as code)
-- 🤖 GitHub Actions (CI/CD pipeline)
+- 🐳 Docker (for containerization)
+- ☁️ AWS ECS Fargate (serverless containers)
+- 📦 Docker Hub (for image storage)
+- 🔧 Terraform (to provision infrastructure)
+- 🤖 GitHub Actions (CI/CD with auto-destroy)
 
 ---
 
@@ -15,14 +15,14 @@ This project automates the deployment of a Strapi backend to **AWS ECS Fargate**
 ```
 Repo/
 ├── .github/workflows/
-│   └── deploy.yml          # CI/CD pipeline: Docker build, push & deploy via Terraform
+│   └── deploy.yml          # GitHub Actions: Docker build + Terraform apply & destroy
 ├── docker/
-│   └── Dockerfile          # Dockerfile for production Strapi build
+│   └── Dockerfile          # Strapi Dockerfile for production
 ├── terraform/
-│   └── main.tf             # Terraform to provision ECS cluster, task, service & SG
+│   └── main.tf             # Terraform: ECS, log group, alarms, etc.
 ├── Strapi-Aryan/
-│   ├── package.json        # Strapi backend code
-│   └── .dockerignore       # Docker ignore for build context
+│   ├── package.json        # Strapi backend project
+│   └── .dockerignore
 └── README.md
 ```
 
@@ -30,45 +30,49 @@ Repo/
 
 ## ⚙️ Setup Instructions
 
-### 🔐 1. Create GitHub Secrets
+### 🔐 1. Add GitHub Secrets
 
-In your GitHub repository settings, add the following secrets:
+Go to your GitHub repo → **Settings** → **Secrets and Variables** → **Actions**, then add:
 
 | Secret Name              | Description                             |
 |--------------------------|-----------------------------------------|
-| `DOCKER_USERNAME`        | Your Docker Hub username                |
-| `DOCKER_PASSWORD`        | Your Docker Hub password/token          |
-| `DOCKER_REPO`            | Full repo name (e.g. `username/image`)  |
-| `AWS_ACCESS_KEY_ID`      | IAM access key for AWS                  |
-| `AWS_SECRET_ACCESS_KEY`  | IAM secret key for AWS                  |
-| `AWS_REGION`             | AWS region (e.g. `us-east-1`)           |
+| `DOCKER_USERNAME`        | Docker Hub username                     |
+| `DOCKER_PASSWORD`        | Docker Hub password or access token     |
+| `DOCKER_REPO`            | Docker repo (e.g. `yourname/strapi-app`)|
+| `AWS_ACCESS_KEY_ID`      | AWS IAM access key                      |
+| `AWS_SECRET_ACCESS_KEY`  | AWS IAM secret key                      |
+| `AWS_REGION`             | e.g. `us-east-1`                        |
 | `HOST`                   | Strapi host (`0.0.0.0`)                 |
 | `PORT`                   | Strapi port (`1337`)                    |
 | `APP_KEYS`               | Strapi app keys                         |
 | `API_TOKEN_SALT`         | Strapi API token salt                   |
-| `ADMIN_JWT_SECRET`       | Strapi admin JWT secret                 |
-| `TRANSFER_TOKEN_SALT`    | Strapi transfer token salt              |
+| `ADMIN_JWT_SECRET`       | Admin JWT secret                        |
+| `TRANSFER_TOKEN_SALT`    | Transfer token salt                     |
 | `JWT_SECRET`             | JWT secret                              |
-| `ENCRYPTION_KEY`         | Strapi encryption key                   |
+| `ENCRYPTION_KEY`         | Encryption key                          |
 
 ---
 
-### 🚀 2. CI/CD Deployment Workflow
+## 🚀 2. GitHub Actions CI/CD Workflow
 
-Each push to `main` will:
+On push to `main`, the workflow will:
 
-1. Build the Docker image from `Strapi-Aryan/`
-2. Push to Docker Hub: `${{ secrets.DOCKER_REPO }}:latest`
-3. Use Terraform to:
-   - Provision a security group
-   - Deploy ECS Fargate cluster, task, and service
-   - Expose port 1337 to the internet
+1. ✅ Build Docker image from `Strapi-Aryan/`
+2. ✅ Push image to Docker Hub
+3. ✅ Deploy AWS infrastructure via Terraform:
+   - ECS Cluster, Fargate Task, Service
+   - Security Group (port 1337)
+   - CloudWatch Log Group
+   - Dashboard (CPU + Memory)
+   - Alarm for CPU > 75%
+4. ⏳ Wait 10 minutes
+5. 💣 **Auto-destroy** all provisioned resources
 
-> 🌐 Result: Access your Strapi CMS at `http://<ECS-Public-IP>:1337`
+🟢 Result: Strapi backend runs temporarily for testing, then cleans up.
 
 ---
 
-## 📦 Docker (Local Build & Run)
+## 📦 Local Docker Testing
 
 ```bash
 docker build -f docker/Dockerfile -t strapi-app ./Strapi-Aryan
@@ -77,30 +81,60 @@ docker run -p 1337:1337 strapi-app
 
 ---
 
-## 🌍 Terraform (Manual Deploy)
+## 🌍 Manual Terraform Usage
 
 ```bash
 cd terraform
 terraform init
-terraform apply
+terraform apply -auto-approve
 ```
 
-✅ Output: ECS public IP where Strapi is running.
+🟢 After deploy:  
+Check ECS → Tasks → Networking tab → copy public IP.  
+Visit `http://<ip>:1337` to access Strapi.
 
 ---
 
-## 🧼 Cleanup
+## 📊 CloudWatch Monitoring
 
-To destroy all AWS resources:
+Deployed automatically:
+
+- **Dashboard**:
+  - CPU Utilization
+  - Memory Utilization
+- **Alarm**:
+  - CPU > 75% for 10 minutes → triggers alarm
+
+---
+
+## 🧼 Auto Cleanup
+
+After 10 minutes, the GitHub Actions pipeline **automatically runs**:
+
+```bash
+terraform destroy -auto-approve
+```
+
+To manually destroy:
 
 ```bash
 cd terraform
-terraform destroy
+terraform destroy -auto-approve
 ```
 
 ---
 
-## 🛠️ Notes
+## 🛠 Notes
 
-- ECS Fargate = zero EC2 hassle ✅
-- All secrets are inject
+- ECS Fargate = no EC2, no servers to manage
+- Metrics (CPU/Memory) appear in ~5 minutes after task starts
+- Logs are in CloudWatch Log Group: `/ecs/strapi`
+- Public IP is ephemeral — session lasts 10 minutes only
+- Ideal for testing, demos, CI environments
+
+---
+
+## 👨‍💻 Author
+
+Deployed & automated by **Aryan**  
+CI/CD, ECS, Docker, and Terraform – done right ✅
